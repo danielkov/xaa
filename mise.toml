@@ -1,0 +1,31 @@
+# Reproducible toolchain for the `xaa` workspace.
+#
+# Pins the Rust toolchain and the auxiliary cargo CLIs the project relies on so
+# every contributor and CI run builds and verifies with the same versions.
+# Run `mise install` to provision everything.
+#
+# The `rust` tool shells out to the system `rustup`, so additional toolchains
+# installed via rustup (e.g. `nightly`, required by `cargo fuzz`) remain usable
+# through the usual `cargo +nightly …` proxy.
+
+[tools]
+# Pin to a concrete stable release rather than the floating `stable` channel so
+# builds — and `cargo fmt` output — are byte-reproducible across contributors
+# and CI. Must stay at or above the crate MSRV (1.91.0).
+rust = "1.100.0"
+# Coverage-guided fuzzing harnesses (`cargo fuzz run …`). Requires a nightly
+# toolchain at run time, which it picks up from rustup.
+"cargo:cargo-fuzz" = "0.13.1"
+# Source-based coverage (`cargo llvm-cov …`). Drives `scripts/coverage.sh`
+# locally and the `coverage` CI job. Needs the `llvm-tools-preview` rustup
+# component, which the pinned rust toolchain ships.
+"cargo:cargo-llvm-cov" = "0.8.7"
+
+[tasks.fuzz]
+description = "Run a libfuzzer target (default 30m). Usage: mise run fuzz fuzz_id_jag_decode"
+dir = "fuzz"
+run = "cargo +nightly fuzz run \"${1:-fuzz_id_jag_decode}\" -- -max_total_time=${FUZZ_SECONDS:-1800}"
+
+[tasks.coverage]
+description = "Generate an HTML coverage report for the workspace"
+run = "scripts/coverage.sh"

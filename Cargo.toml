@@ -1,0 +1,163 @@
+[workspace]
+members = [
+    ".",
+    "examples/client",
+    "examples/resource-as",
+    "examples/idp",
+    "fuzz",
+]
+
+[package]
+name = "xaa"
+version = "0.0.1-alpha.0"
+edition = "2024"
+rust-version = "1.91.0"
+description = "Stateless Cross App Access (XAA) toolkit: Identity Assertion JWT Authorization Grant (ID-JAG) for requesting apps and resource authorization servers"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/danielkov/xaa"
+documentation = "https://docs.rs/xaa"
+readme = "README.md"
+keywords = ["oauth", "xaa", "id-jag", "sso", "auth"]
+categories = ["authentication", "cryptography"]
+exclude = [
+    ".DS_Store",
+    "**/.DS_Store",
+    ".github/",
+    ".claude/",
+    ".tmp/",
+    "examples/",
+    "fuzz/",
+    "mise.toml",
+]
+
+[dependencies]
+base64 = "0.22"
+rsa = { version = "0.10", features = ["pkcs1v15"] }
+ecdsa = "0.17"
+p256 = { version = "0.14", features = ["ecdsa", "pem"] }
+p384 = { version = "0.14", features = ["ecdsa", "pem"] }
+sha2 = { version = "0.11", features = ["oid"] }
+rand = "0.10"
+pkcs8 = { version = "0.11", features = ["pem"] }
+signature = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+http = "1"
+url = "2"
+zeroize = { version = "1", features = ["derive"] }
+subtle = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+
+[features]
+default = ["client", "resource-as"]
+# Client (requesting app): RFC 8693 token exchange at the IdP for an
+# ID-JAG, then RFC 7523 jwt-bearer grant at the resource authorization server.
+client = []
+# Resource Authorization Server: validate a presented ID-JAG at the
+# jwt-bearer grant and hand the caller a verified grant to mint a token from.
+resource-as = []
+# IdP Authorization Server: issue ID-JAGs at the token-exchange endpoint. Off
+# by default; it exists so the crate can prove client and resource-as against
+# each other in-process and in
+# `examples/idp/` without third-party software in the loop.
+idp = []
+# A `ReqwestClient` adapter for the `HttpClient` trait (rustls, no native TLS).
+reqwest-client = ["dep:reqwest"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
+proptest = "1"
+# SAML interop proof only (tests/saml_flow_test.rs); never a runtime dependency.
+saml = { version = "0.1.0-alpha.3", default-features = false, features = ["rsa-sha", "ecdsa-sha", "metadata-emit", "xsd-validate"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "deny", priority = -1 }
+# `cargo-fuzz` injects `--cfg fuzzing` when building fuzz targets, gating
+# `pub mod __fuzz` in lib.rs. Register the cfg name so ordinary builds don't
+# warn about it under `unexpected_cfgs`.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+
+[lints.clippy]
+# Categories
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+
+# Pedantic carve-outs (opinionated style nits, not bug classes)
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+similar_names = "allow"
+single_match_else = "allow"
+unreadable_literal = "allow"
+too_many_lines = "allow"
+struct_field_names = "allow"
+items_after_statements = "allow"
+doc_markdown = "allow"
+needless_pass_by_value = "allow"
+
+# Restriction: don't panic
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+unchecked_time_subtraction = "deny"
+
+# Restriction: don't fail silently
+let_underscore_future = "deny"
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"
+map_err_ignore = "deny"
+assertions_on_result_states = "deny"
+
+# Restriction: numeric correctness
+arithmetic_side_effects = "deny"
+float_cmp = "deny"
+float_cmp_const = "deny"
+lossy_float_literal = "deny"
+cast_sign_loss = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_precision_loss = "deny"
+invalid_upcast_comparisons = "deny"
+
+# Restriction: memory / unsafe hygiene
+mem_forget = "deny"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+unnecessary_safety_doc = "deny"
+unnecessary_safety_comment = "deny"
+
+# Restriction: async footguns
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+if_let_mutex = "deny"
+large_futures = "deny"
+
+# Restriction: misc footguns
+rc_mutex = "deny"
+debug_assert_with_mut_call = "deny"
+iter_not_returning_iterator = "deny"
+expl_impl_clone_on_copy = "deny"
+infallible_try_from = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+# Force documented suppressions
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"

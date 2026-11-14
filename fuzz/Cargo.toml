@@ -1,0 +1,34 @@
+[package]
+name = "xaa-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.91.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.xaa]
+path = ".."
+default-features = true
+
+# `cargo-fuzz` injects `--cfg fuzzing` when building fuzz targets. Declare it
+# so non-fuzz builds (e.g. `cargo check --all`) don't warn about an unknown
+# cfg name.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+
+# Each binary is wired up explicitly so cargo-fuzz can discover it via the
+# `[[bin]]` table. `test = false` / `doc = false` keeps `cargo test` and
+# `cargo doc` from trying to compile the libfuzzer entry points (which require
+# a sanitizer-linked driver, only present under `cargo fuzz build`).
+
+[[bin]]
+name = "fuzz_id_jag_decode"
+path = "fuzz_targets/fuzz_id_jag_decode.rs"
+test = false
+doc = false
+bench = false

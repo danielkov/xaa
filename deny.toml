@@ -1,0 +1,96 @@
+# cargo-deny configuration.
+# Run locally with: cargo deny check
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+# ---------------------------------------------------------------------------
+# Graph traversal: consider all targets we actually support.
+# Leaving this empty would walk every Tier-1+ target; we only care about
+# what users actually build on.
+# ---------------------------------------------------------------------------
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[output]
+feature-depth = 1
+
+# ---------------------------------------------------------------------------
+# Advisories: fail the build on known CVEs / yanked crates.
+# Every ignore must carry a rationale here AND in SECURITY.md.
+# ---------------------------------------------------------------------------
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = []
+
+# ---------------------------------------------------------------------------
+# Licenses: allow permissive only. No GPL/AGPL/LGPL/SSPL.
+# ---------------------------------------------------------------------------
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "Zlib",
+    "CC0-1.0",
+    # webpki-roots ships the Mozilla CA bundle; its *data* is licensed
+    # CDLA-Permissive-2.0 (a permissive, no-copyleft data license). Pulled
+    # in only by the optional `reqwest-client` feature, via rustls.
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.93
+
+# ---------------------------------------------------------------------------
+# Bans: no duplicate versions of major deps, no wildcard versions.
+# ---------------------------------------------------------------------------
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+# Pragmatic skips for duplicate versions pulled in by independent transitive
+# chains we don't control. Each entry needs a comment naming the chains.
+skip = [
+    # All three come from the optional `reqwest-client` feature or from
+    # proc-macro crates, never from the protocol code itself.
+    # rustls/ring still use getrandom 0.2; the RustCrypto stack uses 0.4.
+    { name = "getrandom", version = "0.2" },
+    # hyper-util moved to base64 0.23; reqwest 0.12 and this crate (in
+    # lockstep with `saml`) are on 0.22.
+    { name = "base64", version = "0.23" },
+    # The proc-macro ecosystem is mid-migration from syn 2 to syn 3.
+    { name = "syn", version = "2" },
+]
+skip-tree = []
+
+# Keep the protocol layer free of a C build toolchain.
+deny = [
+    { name = "openssl" },
+    { name = "openssl-sys" },
+    { name = "native-tls" },
+]
+
+# ---------------------------------------------------------------------------
+# Sources: only crates.io + this repo. No random git deps.
+# ---------------------------------------------------------------------------
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

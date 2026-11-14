@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 98ac125ff1b1c55d6726e1beb91049a2b9d170bc71e072dded50056335770924 # shrinks to claimed_scope = ["a"], requested_scope = Some([]), granted_scope = ["a"], claimed_resources = [], granted_resources = None

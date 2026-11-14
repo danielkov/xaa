@@ -1,0 +1,267 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Format check (fast, fail-fast)
+  # ---------------------------------------------------------------------------
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable + rustfmt)
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+  # ---------------------------------------------------------------------------
+  # Clippy: run across every feature combo we test
+  # Uses stable toolchain. Clippy on MSRV / beta would just duplicate noise.
+  # ---------------------------------------------------------------------------
+  clippy:
+    name: clippy (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: all-features
+            flags: --all-features
+          - name: default-features
+            flags: ""
+          - name: no-default-features
+            flags: --no-default-features
+          - name: client-only
+            flags: --no-default-features --features client
+          - name: resource-as-only
+            flags: --no-default-features --features resource-as
+          - name: idp-only
+            flags: --no-default-features --features idp
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable + clippy)
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: clippy-${{ matrix.name }}
+      # Check the library in isolation first. Workspace feature unification
+      # (each example enables a different component; `fuzz` enables defaults) would
+      # otherwise mask a component that silently depends on another's code.
+      - name: cargo clippy xaa-only ${{ matrix.flags }}
+        run: cargo clippy -p xaa --all-targets ${{ matrix.flags }} -- -D warnings
+      - name: cargo clippy ${{ matrix.flags }}
+        run: cargo clippy --workspace --all-targets ${{ matrix.flags }} -- -D warnings
+
+  # ---------------------------------------------------------------------------
+  # Tests: matrix on Rust toolchain X feature combo, Ubuntu only
+  # ---------------------------------------------------------------------------
+  test:
+    name: test ${{ matrix.rust }} / ${{ matrix.features.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta, "1.91.0"]
+        features:
+          - name: default
+            flags: ""
+          - name: all-features
+            flags: --all-features
+          - name: no-default-features
+            flags: --no-default-features
+          - name: client-only
+            flags: --no-default-features --features client
+          - name: resource-as-only
+            flags: --no-default-features --features resource-as
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: test-${{ matrix.rust }}-${{ matrix.features.name }}
+      - name: cargo test xaa-only ${{ matrix.features.flags }}
+        run: cargo test -p xaa ${{ matrix.features.flags }}
+      - name: cargo test ${{ matrix.features.flags }}
+        run: cargo test --workspace ${{ matrix.features.flags }}
+
+  # ---------------------------------------------------------------------------
+  # Fuzz targets must keep building. Their harness bodies are `#[cfg(fuzzing)]`,
+  # so a normal `cargo build`/clippy never compiles them — a fuzz target can
+  # silently rot when a public API it calls changes. This job compiles every
+  # target under the cargo-fuzz toolchain (no running) to catch that.
+  # ---------------------------------------------------------------------------
+  fuzz-build:
+    name: fuzz build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (nightly)
+        uses: dtolnay/rust-toolchain@7c8d7d138f5c09cef361f8214cf96882cd029cdb # nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: fuzz-build
+      # Prebuilt binary — compiling cargo-fuzz from source on nightly pulls
+      # transitive deps (old rustix) that fail to build against current nightly.
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833 # v2
+        with:
+          tool: cargo-fuzz@0.13.1
+      # Pin the gnu target explicitly: the prebuilt cargo-fuzz defaults to the
+      # musl host triple, whose std isn't installed on the nightly toolchain
+      # (E0463 can't find `core`). gnu is the standard ASan fuzzing target and
+      # ships std with the toolchain.
+      - name: cargo fuzz build
+        run: cargo +nightly fuzz build --target x86_64-unknown-linux-gnu
+
+  # ---------------------------------------------------------------------------
+  # Coverage: instrument the workspace with cargo-llvm-cov, emit lcov, and push
+  # to Codecov. Uploads authenticate via GitHub OIDC (requires the Codecov
+  # GitHub App on the repo). Never fail CI on an upload hiccup.
+  # ---------------------------------------------------------------------------
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable + llvm-tools)
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: coverage
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833 # v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+      - name: cargo llvm-cov
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          files: lcov.info
+          use_oidc: true
+          fail_ci_if_error: false
+
+  # ---------------------------------------------------------------------------
+  # Cross-platform smoke test: default features only, stable only.
+  # Keeps CI minutes reasonable; full matrix lives on Linux.
+  # ---------------------------------------------------------------------------
+  cross-platform:
+    name: smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: smoke-${{ matrix.os }}
+      - name: cargo test (default features)
+        run: cargo test --workspace
+
+  # ---------------------------------------------------------------------------
+  # The protocol layer must build for wasm with no default features — the
+  # crate is stateless and BYO-HTTP, so nothing in it should need a socket.
+  #
+  # The target is WASI, which has a system random source. On
+  # `wasm32-unknown-unknown` the `getrandom` crate has no default backend and
+  # the *application* has to pick one (its `wasm_js` feature in a browser); a
+  # library must not make that choice, so that target is not built here.
+  # ---------------------------------------------------------------------------
+  wasm:
+    name: wasm32-wasip1 (protocol layer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable + wasm32-wasip1)
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: wasm
+      - name: cargo build (wasm32, client + resource-as + idp)
+        run: |
+          cargo build -p xaa --target wasm32-wasip1 \
+            --no-default-features --features client,resource-as,idp
+
+  # ---------------------------------------------------------------------------
+  # Documentation must build cleanly.
+  # ---------------------------------------------------------------------------
+  doc:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: doc
+      - name: cargo doc --all-features
+        run: cargo doc --workspace --all-features --no-deps
+
+  # ---------------------------------------------------------------------------
+  # Closed-loop examples: `examples/idp`, `examples/resource-as` and
+  # `examples/client` talk to each other over real HTTP on loopback. The script
+  # builds them, runs the whole flow with bearer tokens and with DPoP, and
+  # fails unless the client prints the todos. No third-party service involved.
+  # ---------------------------------------------------------------------------
+  examples:
+    name: examples (closed loop)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: examples
+      - name: scripts/smoke-examples.sh
+        run: scripts/smoke-examples.sh
+
+  # ---------------------------------------------------------------------------
+  # Playground interop: client against the public xaa.dev playground.
+  # Gated by XAA_RUN_PLAYGROUND=1 and developer credentials; enable once the
+  # client lands and secrets are provisioned.
+  # ---------------------------------------------------------------------------
+  # playground-interop:
+  #   name: xaa.dev playground interop
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+  #     - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+  #     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+  #     - name: Run playground interop tests
+  #       env:
+  #         XAA_RUN_PLAYGROUND: "1"
+  #         XAA_CLIENT_ID: ${{ secrets.XAA_CLIENT_ID }}
+  #         XAA_CLIENT_SECRET: ${{ secrets.XAA_CLIENT_SECRET }}
+  #       run: cargo test --test playground_interop

@@ -71,13 +71,21 @@ mod reqwest_impl {
     #[derive(Debug, Clone)]
     pub struct ReqwestClient(pub reqwest::Client);
 
+    /// Largest response body [`ReqwestClient`] reads: 1 MiB. Token and
+    /// metadata responses are far smaller; the peer may be an untrusted
+    /// server named by a `WWW-Authenticate` challenge.
+    const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
+
     impl ReqwestClient {
-        /// A client that never follows redirects. A redirect from a token
-        /// endpoint would replay credentials to another origin.
+        /// A client that never follows redirects, gives up on a request
+        /// after 30 seconds, and reads at most 1 MiB of a response. A redirect from a token endpoint would replay
+        /// credentials to another origin.
         pub fn new() -> Result<Self, BoxError> {
             Ok(Self(
                 reqwest::Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
+                    .connect_timeout(std::time::Duration::from_secs(10))
+                    .timeout(std::time::Duration::from_secs(30))
                     .build()?,
             ))
         }
@@ -90,7 +98,7 @@ mod reqwest_impl {
             for (name, value) in &request.headers {
                 outbound = outbound.header(name, value);
             }
-            let response = outbound.send().await?;
+            let mut response = outbound.send().await?;
             let status = response.status().as_u16();
             let mut headers = Vec::with_capacity(response.headers().len());
             for (name, value) in response.headers() {
@@ -100,7 +108,13 @@ mod reqwest_impl {
                     headers.push((name.as_str().to_owned(), value.to_owned()));
                 }
             }
-            let body = response.bytes().await?.to_vec();
+            let mut body = Vec::new();
+            while let Some(chunk) = response.chunk().await? {
+                if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+                    return Err("the response body is larger than 1 MiB".into());
+                }
+                body.extend_from_slice(&chunk);
+            }
             Ok(HttpResponse {
                 status,
                 headers,

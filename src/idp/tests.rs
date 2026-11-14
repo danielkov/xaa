@@ -2588,3 +2588,17 @@ fn metadata_advertises_the_token_exchange_and_the_id_jag_type() {
         Some(vec!["RS256".to_owned(), "ES256".to_owned()])
     );
 }
+
+/// An exact repeat names the same resource again; it is not a second one.
+#[test]
+fn repeated_identical_resource_parameters_collapse() {
+    let mut pairs = pairs();
+    pairs.retain(|(name, _)| *name != "resource");
+    pairs.push(("resource", "https://api.example/".to_owned()));
+    pairs.push(("resource", "https://api.example/v2".to_owned()));
+    pairs.push(("resource", "https://api.example/".to_owned()));
+    assert_eq!(
+        request(&pairs).resources(),
+        ["https://api.example/", "https://api.example/v2"]
+    );
+}

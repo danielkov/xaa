@@ -1551,9 +1551,10 @@ async fn a_replay_store_error_fails_closed() {
     let mut case = Case::new();
     case.config.jti_policy = JtiPolicy::SingleUse;
     let error = case.run_with(Some(&BrokenStore)).await.unwrap_err();
+    // A server fault, not a bad grant: the client may retry.
     assert_rejected(
         &error,
-        &OAuthErrorCode::InvalidGrant,
+        &OAuthErrorCode::ServerError,
         RejectReason::ReplayStoreUnavailable,
     );
     assert!(matches!(error.error(), Some(Error::ReplayStore(_))));
@@ -2421,4 +2422,27 @@ async fn the_validation_future_is_send() {
     ))
     .await
     .unwrap();
+}
+
+/// Draft §6.1: `aud_tenant` names the recipient tenant when present. A
+/// single-tenant issuer's trust relationship does not override it.
+#[tokio::test]
+async fn single_tenant_issuer_aud_tenant_must_name_the_recipient_tenant() {
+    let claims = with(claims(), "aud_tenant", json!("workspace-b"));
+
+    Case::claims(claims.clone())
+        .invalid_grant(RejectReason::UntrustedTenant)
+        .await;
+
+    let mut other = Case::claims(claims.clone());
+    for issuer in &mut other.config.trusted_issuers {
+        issuer.aud_tenant = Some("workspace-a".to_owned());
+    }
+    other.invalid_grant(RejectReason::UntrustedTenant).await;
+
+    let mut same = Case::claims(claims);
+    for issuer in &mut same.config.trusted_issuers {
+        issuer.aud_tenant = Some("workspace-b".to_owned());
+    }
+    same.run().await.unwrap();
 }

@@ -338,7 +338,7 @@ impl ResourceAs {
                 }
                 Err(source) => {
                     return Err(
-                        TokenError::invalid_grant(RejectReason::ReplayStoreUnavailable)
+                        TokenError::server_error(RejectReason::ReplayStoreUnavailable)
                             .with_source(Error::ReplayStore(source)),
                     );
                 }
@@ -400,7 +400,14 @@ fn resolve_tenant(
     claims: &IdJagClaims,
 ) -> Result<RecipientTenant, TokenError> {
     match &trusted.tenancy {
-        Tenancy::Single { recipient_tenant } => Ok(recipient_tenant.clone()),
+        Tenancy::Single { recipient_tenant } => {
+            // The trust relationship names the tenant, but an explicit
+            // `aud_tenant` wins: it must name the same one.
+            if claims.aud_tenant.is_some() && claims.aud_tenant != trusted.aud_tenant {
+                return Err(TokenError::invalid_grant(RejectReason::UntrustedTenant));
+            }
+            Ok(recipient_tenant.clone())
+        }
         Tenancy::Multi(resolver) => {
             let tenant = claims
                 .tenant

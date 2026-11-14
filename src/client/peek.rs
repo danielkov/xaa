@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use crate::claims::{Audience, Confirmation, IdJagClaims, Issuer, NumericDate, Resources, Scope};
 use crate::error::Error;
-use crate::jose::{ExpectedTyp, ParseLimits, UnverifiedJws, parse_object_rejecting_duplicates};
+use crate::jose::{ParseLimits, id_jag_payload_unverified, parse_object_rejecting_duplicates};
 
 /// Claims read from an ID-JAG **without verifying its signature**.
 ///
@@ -25,22 +25,15 @@ impl IdJagPeek {
     /// Read `token`: a compact JWS typed `oauth-id-jag+jwt` (draft §3.1)
     /// whose payload is a well-formed ID-JAG claim set.
     pub(super) fn read(token: &str) -> Result<Self, Error> {
-        let jws = UnverifiedJws::parse(token, &ParseLimits::default()).map_err(|_source| {
+        // Not the verifying parser: the client never checks the signature,
+        // so an `alg` this crate cannot verify is no reason to refuse.
+        let payload = id_jag_payload_unverified(token, ParseLimits::default())
+            .map_err(|reason| Error::MalformedIdJag { reason })?;
+        let object = parse_object_rejecting_duplicates(&payload).map_err(|_reason| {
             Error::MalformedIdJag {
-                reason: "not a compact JWS",
+                reason: "payload is not a JSON object with unique member names",
             }
         })?;
-        ExpectedTyp::IdJag
-            .check(jws.header())
-            .map_err(|_source| Error::MalformedIdJag {
-                reason: "typ is not oauth-id-jag+jwt",
-            })?;
-        let object =
-            parse_object_rejecting_duplicates(jws.payload_unverified()).map_err(|_reason| {
-                Error::MalformedIdJag {
-                    reason: "payload is not a JSON object with unique member names",
-                }
-            })?;
         let claims = IdJagClaims::from_object(object).map_err(|_source| Error::MalformedIdJag {
             reason: "claims are not a well-formed ID-JAG claim set",
         })?;

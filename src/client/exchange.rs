@@ -200,8 +200,11 @@ impl<'a> TokenExchange<'a> {
         if peek.client_id() != self.resource_as.client_auth.client_id() {
             return Err(Error::IdJagClientIdMismatch);
         }
-        // Draft §4.3.3: "exactly as the Client sent it".
-        if let Some(resources) = peek.resources() {
+        // Draft §4.3.3: "exactly as the Client sent it". A client that named
+        // no resource gets the IdP's default, so there is nothing to compare.
+        if let Some(resources) = peek.resources()
+            && !self.resources.is_empty()
+        {
             let without_slash =
                 |value: &str| -> String { value.strip_suffix('/').unwrap_or(value).to_owned() };
             let requested = |value: &String| {

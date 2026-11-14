@@ -155,6 +155,12 @@ pub struct TrustedIssuer {
     /// Reject ID-JAGs from this issuer that lack an authorized `saml-nameid`
     /// `sub_id` (draft §3.2.2). Default false.
     pub require_saml_subject: bool,
+    /// For a single-tenant issuer: the `aud_tenant` value that names its
+    /// recipient tenant (draft §6.1). An ID-JAG whose `aud_tenant` is
+    /// anything else is for another tenant and is rejected. Default `None`,
+    /// which rejects every ID-JAG that carries `aud_tenant`. A multi-tenant
+    /// issuer's resolver receives the claim instead.
+    pub aud_tenant: Option<String>,
 }
 
 impl TrustedIssuer {
@@ -176,6 +182,7 @@ impl TrustedIssuer {
             tenancy,
             saml_issuers: Vec::new(),
             require_saml_subject: false,
+            aud_tenant: None,
         }
     }
 }

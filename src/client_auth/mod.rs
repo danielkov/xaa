@@ -339,9 +339,12 @@ fn parse_basic(value: &str) -> Result<Option<(String, ClientSecret)>, Credential
         .map_err(|_source| CredentialsError::Malformed)?;
     let decoded = String::from_utf8(decoded).map_err(|_source| CredentialsError::Malformed)?;
     let (client_id, secret) = decoded.split_once(':').ok_or(CredentialsError::Malformed)?;
-    // RFC 6749 §2.3.1: each part is form-urlencoded.
+    // RFC 6749 §2.3.1: each part is form-urlencoded. A part is one value,
+    // so a literal `&` or `=` (from a client that did not encode) belongs
+    // to it and must not split it.
     let decode = |part: &str| -> Option<String> {
-        url::form_urlencoded::parse(part.as_bytes())
+        let whole = part.replace('&', "%26").replace('=', "%3D");
+        url::form_urlencoded::parse(whole.as_bytes())
             .next()
             .map(|(name, _)| name.into_owned())
     };
@@ -925,5 +928,23 @@ mod tests {
             secret: ClientSecret::new("hunter2"),
         };
         assert!(!format!("{auth:?}").contains("hunter2"));
+    }
+
+    /// A client that does not form-encode its Basic credentials still gets
+    /// the whole secret: `=` and `&` are part of the value.
+    #[test]
+    fn basic_credentials_keep_literal_delimiters() {
+        let header = |text: &str| format!("Basic {}", STANDARD.encode(text));
+        for (sent, id, secret) in [
+            ("client-1:c2VjcmV0==", "client-1", "c2VjcmV0=="),
+            ("client-1:a&b=c", "client-1", "a&b=c"),
+            ("client%2D1:p%40ss+word%3D", "client-1", "p@ss word="),
+            ("client-1:", "client-1", ""),
+        ] {
+            let (got_id, got_secret) = parse_basic(&header(sent)).unwrap().unwrap();
+            assert_eq!(got_id, id, "{sent}");
+            assert_eq!(got_secret.expose_secret(), secret, "{sent}");
+        }
+        parse_basic(&header(":secret")).unwrap_err();
     }
 }

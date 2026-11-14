@@ -142,7 +142,7 @@ impl TokenExchangeRequest {
 
 Parsing takes no configuration. A `…:refresh_token` request with `saml_refresh_exchange` off is refused with `invalid_request` by the `Idp` methods.
 
-`resource` may repeat (RFC 8707 §2). The values are kept in order and byte-for-byte. A parameter sent without a value counts as absent (RFC 6749 §3.2).
+`resource` may repeat (RFC 8707 §2). The values are kept in order and byte-for-byte. A parameter sent without a value counts as absent (RFC 6749 §3.2), and an exact repeat of an earlier value is dropped.
 
 A `saml2` `subject_token` is accepted in either encoding: base64url (RFC 8693 §3) or standard base64 (the draft §4.5 example), each with or without padding. The alphabets differ only in `-_` versus `+/`, so the decoder picks one by the characters present. A token that mixes characters from both, or decodes to nothing, fails with `invalid_request`. The decoded bytes go to `SubjectTokenVerifier`, which does the signature check.
 

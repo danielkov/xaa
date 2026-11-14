@@ -333,9 +333,38 @@ fn normalize_typ(typ: &str) -> String {
 /// different token (draft §4.3.3). `None` means the token is not a parseable
 /// JWS or has no `typ`.
 pub fn peek_typ(token: &str) -> Option<String> {
-    UnverifiedJws::parse(token, &ParseLimits::default())
-        .ok()
-        .and_then(|jws| jws.header.typ)
+    let (header, _rest) = token.split_once('.')?;
+    let members = parse_object_rejecting_duplicates(&b64url_decode(header)?).ok()?;
+    members.get("typ")?.as_str().map(str::to_owned)
+}
+
+/// The decoded payload of a compact JWS whose `typ` is `oauth-id-jag+jwt`,
+/// **without verifying anything** and whatever its `alg`.
+///
+/// For a party that only forwards the token: the client reads an ID-JAG it
+/// cannot verify, which the IdP may have signed with an algorithm this crate
+/// does not implement.
+#[cfg(any(test, feature = "client"))]
+pub(crate) fn id_jag_payload_unverified(
+    token: &str,
+    limits: ParseLimits,
+) -> Result<Vec<u8>, &'static str> {
+    if token.len() > limits.max_len {
+        return Err("not a compact JWS");
+    }
+    let mut segments = token.split('.');
+    let (Some(_header), Some(payload), Some(_signature), None) = (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    ) else {
+        return Err("not a compact JWS");
+    };
+    if peek_typ(token).map(|typ| normalize_typ(&typ)).as_deref() != Some(TYP_ID_JAG) {
+        return Err("typ is not oauth-id-jag+jwt");
+    }
+    b64url_decode(payload).ok_or("not a compact JWS")
 }
 
 /// Claims read from a JWS whose signature has been verified.
@@ -865,6 +894,35 @@ mod tests {
         let token = sign(&key, None, &json!({})).await;
         assert_eq!(peek_typ(&token), None);
         assert_eq!(peek_typ("not a jwt"), None);
+    }
+
+    /// The IdP's typ rule must see the type of a token this crate cannot
+    /// verify, or an EdDSA access token would pass as an ID Token.
+    #[test]
+    fn peek_typ_does_not_depend_on_the_algorithm() {
+        let header = b64url_encode(br#"{"alg":"EdDSA","typ":"at+jwt","crit":["x"]}"#);
+        let token = format!("{header}.e30.c2ln");
+        assert_eq!(peek_typ(&token).as_deref(), Some("at+jwt"));
+    }
+
+    #[test]
+    fn id_jag_payload_is_read_whatever_the_algorithm() {
+        let header = b64url_encode(br#"{"alg":"ES512","typ":"oauth-id-jag+jwt"}"#);
+        let token = format!("{header}.e30.c2ln");
+        assert_eq!(
+            id_jag_payload_unverified(&token, ParseLimits::default()).unwrap(),
+            b"{}"
+        );
+        let header = b64url_encode(br#"{"alg":"ES512","typ":"at+jwt"}"#);
+        let token = format!("{header}.e30.c2ln");
+        assert_eq!(
+            id_jag_payload_unverified(&token, ParseLimits::default()).unwrap_err(),
+            "typ is not oauth-id-jag+jwt"
+        );
+        assert_eq!(
+            id_jag_payload_unverified("a.b.c.d.e", ParseLimits::default()).unwrap_err(),
+            "not a compact JWS"
+        );
     }
 
     #[test]

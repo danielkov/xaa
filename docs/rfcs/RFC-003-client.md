@@ -189,6 +189,8 @@ Validation (draft §4.3.4 and RFC 8693 §2.2.1):
 
 The client can't, and needn't, verify the IdP's signature. The Resource AS does that. It can still read the claims to catch problems before sending the ID-JAG and its Resource AS credentials anywhere. `IdJagPeek` is a separate type from RFC-002's `Verified<IdJagClaims>` and is never accepted where verified claims are required.
 
+Reading does not use the verifying parser: the ID-JAG's `alg` may be one this crate cannot verify. Only the three-segment shape, the `typ`, and the claim set are checked.
+
 ```rust
 impl IdJagPeek {
     pub fn issuer(&self) -> &Issuer;
@@ -210,6 +212,7 @@ Every accessor returns an unverified value. `IdJagPeek` has no public constructo
 | `aud` is `resource_as.issuer` (or a single-element array of it) | `Error::IdJagAudienceMismatch` | draft §4.4.1. Catches an IdP alias resolved to an unexpected AS before credentials leave. |
 | `client_id` is the client_id of `resource_as.client_auth` | `Error::IdJagClientIdMismatch` | draft §4.4.1, §5.1. Fails early on the "used the IdP credentials at the Resource AS" mistake. |
 | Each `resource` value is byte-identical to one that was requested. `TokenExchange::tolerate_resource_trailing_slash(true)` relaxes this by exactly one trailing `/`, for IdPs that rewrite the identifier (the xaa.dev IdP drops it). | `Error::IdJagResourceAltered { got, requested }` | draft §4.3.3 ("exactly as the Client sent it") |
+| When the request named no `resource`, the row above is skipped: the IdP may apply a default. | none | draft §4.3.3 |
 | A DPoP proof was sent and `cnf.jkt` is missing or doesn't match the key's thumbprint | `Error::BindingDowngrade` | draft §9.11.1.1 (client SHOULD inspect) |
 | The caller says a TLS client certificate was presented and `cnf.x5t#S256` is missing or doesn't match | `Error::BindingDowngrade` | draft §9.11.2.1 |
 

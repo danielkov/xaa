@@ -271,6 +271,7 @@ pub struct UnverifiedSubjectHints<'a> {
 Subject resolution and just-in-time provisioning (draft §2.2) belong to the caller:
 
 - Use `iss` + `sub` for single-tenant issuers, and `iss` + `tenant` + `sub` for multi-tenant ones (draft §3.1, §6.3).
+- A single-tenant issuer's recipient tenant comes from the trust relationship. If the ID-JAG also carries `aud_tenant`, it must equal `TrustedIssuer::aud_tenant`, or the grant is for another tenant and is rejected with `RejectReason::UntrustedTenant` (draft §6.1). The default `None` rejects every ID-JAG with `aud_tenant` from that issuer.
 - Or use `saml_subject_key()`.
 - `email` and `aud_sub` should be trusted only when the caller trusts the issuer tenant as authoritative for them (draft §9.8).
 - `VerifiedGrant::subject_hints()` returns those claims tagged with that caveat, so they aren't mistaken for verified identifiers.
@@ -372,7 +373,7 @@ pub enum JtiPolicy {
 - The `ReplayStore` is a per-call argument of `validate`, so `SingleUse` without one cannot be caught at construction. Every such request fails with `server_error` (`RejectReason::ReplayStoreMissing`) before the ID-JAG is read.
 - When a `ReplayStore` is given, a validated DPoP proof's `jti` is recorded too, under either policy (RFC-007 §3). The proof's `jti` goes first and the ID-JAG's second, so a replayed proof (`invalid_dpop_proof`, `RejectReason::DpopProofReplayed`) does not burn the grant.
 - A replayed ID-JAG is `invalid_grant` (`RejectReason::Replayed`).
-- A `ReplayStore` error fails closed with `RejectReason::ReplayStoreUnavailable`: `invalid_grant` when recording the ID-JAG's `jti`, `server_error` when recording the proof's.
+- A `ReplayStore` error fails closed with `RejectReason::ReplayStoreUnavailable` and `server_error`, for the ID-JAG's `jti` and for the proof's. It is a server fault, so the client may retry with the same grant.
 
 ## 9. Cross-domain rules (§9.4)
 

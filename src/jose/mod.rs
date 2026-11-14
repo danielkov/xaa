@@ -17,6 +17,8 @@ pub use jws::{
 };
 pub use key::{JwsSigner, PrivateKey, SignFuture};
 
+#[cfg(feature = "client")]
+pub(crate) use jws::id_jag_payload_unverified;
 pub(crate) use jws::{parse_object_rejecting_duplicates, sign_jws};
 
 use base64::Engine as _;

@@ -451,9 +451,15 @@ impl JwkSet {
                 reason: "JWK Set has no keys array",
             })?;
         let mut parsed = Vec::with_capacity(keys.len());
+        // RFC 7517 §5: a key this implementation cannot use, or cannot
+        // parse, is skipped. One bad entry must not disable the others.
+        // Private members are the exception: a published private key is a
+        // compromise, and the whole set is refused.
         for key in keys {
-            if let Some(jwk) = Jwk::from_value(key)? {
-                parsed.push(jwk);
+            match Jwk::from_value(key) {
+                Ok(Some(jwk)) => parsed.push(jwk),
+                Err(Error::PrivateKeyMaterial) => return Err(Error::PrivateKeyMaterial),
+                Ok(None) | Err(_) => {}
             }
         }
         Ok(Self { keys: parsed })
@@ -488,10 +494,12 @@ impl JwkSet {
                     kid: kid.to_owned(),
                 });
         }
+        // Only keys that could verify this header count: an encryption key
+        // or a key pinned to another `alg` is not a candidate.
         let mut compatible = self
             .keys
             .iter()
-            .filter(|key| key.family() == alg.key_family());
+            .filter(|key| key.check_usable_for(alg).is_ok());
         match (compatible.next(), compatible.next()) {
             (Some(only), None) => Ok(only),
             (None, _) => Err(Error::AmbiguousKey { candidates: 0 }),
@@ -549,6 +557,12 @@ mod tests {
         );
         let parsed = JwkSet::from_json(set.as_bytes()).unwrap();
         assert_eq!(parsed.keys().len(), 2);
+
+        // A key that does not parse is skipped too (RFC 7517 §5).
+        let set = format!(
+            r#"{{"keys":[{RFC7638_KEY},{{"kty":"RSA","e":"AQAB"}},{{"kty":"EC","crv":"P-256","x":"AA","y":"AA"}},7]}}"#
+        );
+        assert_eq!(JwkSet::from_json(set.as_bytes()).unwrap().keys().len(), 1);
 
         let leaked = r#"{"keys":[{"kty":"RSA","n":"AQAB","e":"AQAB","d":"AQAB"}]}"#;
         assert!(matches!(
@@ -642,5 +656,24 @@ mod tests {
         let json = serde_json::to_string(&key).unwrap();
         let back: Jwk = serde_json::from_str(&json).unwrap();
         assert_eq!(key, back);
+    }
+
+    /// Without `kid`, only keys that could verify the header are candidates.
+    #[test]
+    fn select_without_kid_ignores_keys_that_cannot_verify() {
+        let mut signing: Value = serde_json::from_str(RFC7638_KEY).unwrap();
+        signing.as_object_mut().unwrap().remove("kid");
+        let mut encryption = signing.clone();
+        encryption["use"] = Value::from("enc");
+        let mut other_alg = signing.clone();
+        other_alg["alg"] = Value::from("PS256");
+        let set = JwkSet::from_value(&serde_json::json!({
+            "keys": [signing, encryption, other_alg]
+        }))
+        .unwrap();
+        assert_eq!(set.keys().len(), 3);
+        let selected = set.select(None, SignatureAlgorithm::Rs256).unwrap();
+        assert_eq!(selected.key_use.as_deref(), None);
+        assert_eq!(selected.alg.as_deref(), Some("RS256"));
     }
 }

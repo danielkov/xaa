@@ -132,6 +132,7 @@ Order:
 1. `typ` check (§5).
 2. `alg` is in `policy`.
 3. Key selection. If the header has a `kid`, use the key in `keys` with that `kid` whose type matches `alg`. If there is no `kid`, use the single key compatible with `alg`; zero or several such keys fail with `Error::AmbiguousKey`. An unknown `kid` fails with `Error::UnknownKeyId`. The caller can then refetch the JWKS once and retry, which handles key rotation without the library holding a cache.
+   Without a `kid`, only keys that could verify the header are candidates: a key with `use` other than `sig`, with `key_ops` lacking `verify`, or pinned to a different `alg` is not counted.
 4. JWK constraints. If the key's `alg` is present it must equal the header `alg`. If `use` is present it must be `sig`. If `key_ops` is present it must contain `verify`. A violation fails with `Error::KeyMismatch`.
 5. Signature over the ASCII signing input. A signature that does not verify fails with `Error::BadSignature`.
 6. Only then is the payload deserialized into `T`. A payload that does not deserialize fails with `Error::MalformedClaims`.
@@ -282,6 +283,7 @@ impl Jwk {
 ```
 
 - `RSA` and `EC` (`P-256`, `P-384`) public keys are supported. In a JWK Set, keys with other `kty` or `crv` values are skipped, not rejected, so a JWKS that also publishes OKP keys is still usable. `Jwk::from_json` on such a key alone fails with `Error::MalformedJwk`, as does any key or set that is not well-formed.
+- A key in a JWK Set that does not parse (a missing member, a wrong-length coordinate) is skipped the same way (RFC 7517 §5). Private members are the exception and fail the whole set.
 - A JWK carrying private or symmetric members (`d`, `p`, `q`, `dp`, `dq`, `qi`, `oth`, `k`) fails with `Error::PrivateKeyMaterial`. A published key set should never contain them, and a parser that silently accepts them makes leaks look normal.
 - A server publishes its keys with `JwkSet::from_keys(vec![key.public_jwk()])` (RFC-005 §11). `PrivateKey::public_jwk()` carries the key's `kid`; only public members are ever emitted.
 - Thumbprints use the RFC 7638 §3.2 required members in lexicographic order (`e`, `kty`, `n` for RSA; `crv`, `kty`, `x`, `y` for EC).

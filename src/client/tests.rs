@@ -947,13 +947,11 @@ async fn id_jag_resources_must_be_as_requested() {
         ));
     }
 
-    // A resource in the ID-JAG when none was requested.
+    // A resource in the ID-JAG when none was requested is the IdP's
+    // default (draft §4.3.3), not an alteration.
     let exchange = TokenExchange::new(&idp, &resource_as, &subject, now());
     let token = id_jag(&with(claims(), "resource", json!(RESOURCE))).await;
-    assert!(matches!(
-        parse_token_exchange_response(&exchange, ok(&exchange_body(&token))).unwrap_err(),
-        Error::IdJagResourceAltered { .. }
-    ));
+    parse_token_exchange_response(&exchange, ok(&exchange_body(&token))).unwrap();
 }
 
 #[tokio::test]

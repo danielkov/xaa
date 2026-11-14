@@ -179,13 +179,14 @@ impl TokenExchangeRequest {
             .map_err(|source| ExchangeError::with_source(RejectReason::MalformedScope, source))?;
 
         // RFC 8707 §2: may repeat. Kept in order and byte-for-byte; a
-        // parameter without a value is omitted (RFC 6749 §3.2).
-        let resources = form
-            .all("resource")
-            .into_iter()
-            .filter(|resource| !resource.is_empty())
-            .map(str::to_owned)
-            .collect();
+        // parameter without a value is omitted (RFC 6749 §3.2), and so is
+        // an exact repeat, which names the same resource again.
+        let mut resources: Vec<String> = Vec::new();
+        for resource in form.all("resource") {
+            if !resource.is_empty() && !resources.iter().any(|seen| seen == resource) {
+                resources.push(resource.to_owned());
+            }
+        }
 
         let credentials = ClientCredentials::extract(&form, headers, tls_client_cert.is_some())
             .map_err(|error| match error {

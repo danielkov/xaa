@@ -42,7 +42,7 @@ release notes (see README).
 
 Not done yet. One-time prerequisites:
 
-- Publish `xaa v0.0.1-alpha.0` to crates.io manually to claim the name
+- Publish `xaa v0.1.0-alpha.1` to crates.io manually to claim the name
   (Trusted Publishing can only be configured for an existing crate).
 - Configure Trusted Publishing (repo `danielkov/xaa`, workflow
   `release.yml`, environment `crates-io`) and create the `crates-io` GitHub

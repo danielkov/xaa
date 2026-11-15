@@ -9,7 +9,7 @@ members = [
 
 [package]
 name = "xaa"
-version = "0.0.1-alpha.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
 rust-version = "1.91.0"
 description = "Stateless Cross App Access (XAA) toolkit: Identity Assertion JWT Authorization Grant (ID-JAG) for requesting apps and resource authorization servers"

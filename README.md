@@ -86,7 +86,7 @@ The client prints each step of the flow and then the to-do list of the demo user
 1. Add the crate to your project:
 
    ```sh
-   cargo add xaa@0.0.1-alpha.0 --features reqwest-client
+   cargo add xaa@0.1.0-alpha.1 --features reqwest-client
    ```
 
 2. Get an ID Token for the user from your OpenID Connect login. The crate does not do the login.
@@ -171,7 +171,7 @@ If you know only the URL of the resource, `discover_resource`, `discover_resourc
 To use only one component, disable the default features:
 
 ```sh
-cargo add xaa@0.0.1-alpha.0 --no-default-features --features resource-as
+cargo add xaa@0.1.0-alpha.1 --no-default-features --features resource-as
 ```
 
 ## Supported functions
@@ -187,7 +187,7 @@ cargo add xaa@0.0.1-alpha.0 --no-default-features --features resource-as
 
 ## Status
 
-This crate is a pre-release: **v0.0.1-alpha.0**. The API can change before version 0.1.
+This crate is a pre-release: **v0.1.0-alpha.1**. The API can change before version 0.1.
 
 The crate follows `draft-ietf-oauth-identity-assertion-authz-grant-06`. The draft is not final.
 

@@ -126,3 +126,63 @@ mod reqwest_impl {
 
 #[cfg(feature = "reqwest-client")]
 pub use reqwest_impl::ReqwestClient;
+
+#[cfg(test)]
+#[cfg(feature = "reqwest-client")]
+mod tests {
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
+
+    use super::*;
+
+    /// Serve one request on a loopback port with a body of `len` bytes.
+    fn serve_once(len: usize) -> url::Url {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut stream, _peer) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _read = stream.read(&mut request).unwrap();
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\nX-Test: yes\r\nConnection: close\r\n\r\n"
+            );
+            // The client may hang up early on an oversized body.
+            drop(
+                stream
+                    .write_all(head.as_bytes())
+                    .and_then(|()| stream.write_all(&vec![b'a'; len])),
+            );
+        });
+        url::Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap()
+    }
+
+    fn get(url: url::Url) -> HttpRequest {
+        HttpRequest {
+            method: Method::GET,
+            url,
+            headers: vec![("Accept".to_owned(), "*/*".to_owned())],
+            body: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn reqwest_client_returns_status_headers_and_body() {
+        let client = ReqwestClient::new().unwrap();
+        let response = client.send(get(serve_once(5))).await.unwrap();
+        assert_eq!(response.status, 200);
+        assert_eq!(response.header("x-test"), Some("yes"));
+        assert_eq!(response.body, b"aaaaa");
+    }
+
+    /// The peer can be an untrusted server: the body is not read without
+    /// bound.
+    #[tokio::test]
+    async fn reqwest_client_refuses_an_oversized_body() {
+        let client = ReqwestClient::new().unwrap();
+        let error = client
+            .send(get(serve_once(2 * 1024 * 1024)))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("larger than 1 MiB"), "{error}");
+    }
+}

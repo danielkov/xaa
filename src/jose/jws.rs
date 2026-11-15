@@ -923,6 +923,10 @@ mod tests {
             id_jag_payload_unverified("a.b.c.d.e", ParseLimits::default()).unwrap_err(),
             "not a compact JWS"
         );
+        assert_eq!(
+            id_jag_payload_unverified(&token, ParseLimits { max_len: 8 }).unwrap_err(),
+            "not a compact JWS"
+        );
     }
 
     #[test]

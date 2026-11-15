@@ -40,10 +40,16 @@ release notes (see README).
 
 ## Bootstrap status
 
-Not done yet. One-time prerequisites:
+Done on 2026-11-15. The one-time steps were:
 
-- Publish `xaa v0.1.0-alpha.1` to crates.io manually to claim the name
-  (Trusted Publishing can only be configured for an existing crate).
-- Configure Trusted Publishing (repo `danielkov/xaa`, workflow
-  `release.yml`, environment `crates-io`) and create the `crates-io` GitHub
-  environment (required reviewer, deployments restricted to `v*` tags).
+- `xaa v0.1.0-alpha.1` was published to crates.io manually to claim the
+  name (Trusted Publishing can only be configured for an existing crate).
+  Its tag and GitHub release were created by hand, and the workflow run for
+  that tag was cancelled before the publish job.
+- Trusted Publishing is configured on crates.io (repo `danielkov/xaa`,
+  workflow `release.yml`, environment `crates-io`).
+- The `crates-io` GitHub environment exists, with a required reviewer and
+  deployments restricted to `v*` tags.
+
+Every later release uses the tag-driven flow above. The first one will be
+the first real run of the publish and GitHub release jobs.

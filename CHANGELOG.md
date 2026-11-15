@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.1] - 2026-11-15
+
 Tracks `draft-ietf-oauth-identity-assertion-authz-grant-06`. The client and the Resource AS have been run by hand against the xaa.dev playground, on its OpenID Connect and SAML paths; the IdP component has not been tested against a third-party deployment.
 
 ### Added

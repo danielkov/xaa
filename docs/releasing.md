@@ -38,12 +38,11 @@ Version conventions: pre-1.0, breaking API changes bump the minor version;
 an MSRV bump is treated as a minor-version change and called out in the
 release notes (see README).
 
-## Bootstrap status
+## One-time setup
 
-Not done yet. One-time prerequisites:
+Already in place:
 
-- Publish `xaa v0.1.0-alpha.1` to crates.io manually to claim the name
-  (Trusted Publishing can only be configured for an existing crate).
-- Configure Trusted Publishing (repo `danielkov/xaa`, workflow
-  `release.yml`, environment `crates-io`) and create the `crates-io` GitHub
-  environment (required reviewer, deployments restricted to `v*` tags).
+- Trusted Publishing on crates.io: repo `danielkov/xaa`, workflow
+  `release.yml`, environment `crates-io`.
+- The `crates-io` GitHub environment: a required reviewer, deployments
+  restricted to `v*` tags.
